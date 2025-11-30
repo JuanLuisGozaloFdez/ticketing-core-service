@@ -1,5 +1,13 @@
 name: Backend CI/CD
 
+# ---
+# KUBERNETES MANIFEST VALIDATION (kube-linter)
+# This workflow includes a job (kube-lint) that runs kube-linter on any Kubernetes manifests found in the k8s/ directory.
+# If you add manifests (YAML files) for deployment, place them in k8s/ and they will be automatically validated.
+# If no manifests are present, the job will skip validation.
+# To use conftest instead, replace the kube-linter step with a conftest policy check.
+# ---
+
 on:
   push:
     branches: [ main, develop ]
@@ -16,6 +24,13 @@ on:
       - 'tests/**'
       - 'package.json'
       - 'tsconfig.json'
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: 'Run the build with tmate debugging enabled'
+        required: false
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -187,3 +202,22 @@ jobs:
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+
+  kube-lint:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kube-linter
+        run: |
+          curl -sSL https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz | tar -xz
+          sudo mv kube-linter /usr/local/bin/
+      - name: Run kube-linter on manifests
+        run: |
+          # Update the path below to your manifests directory if/when available
+          if compgen -G "k8s/*.yml" > /dev/null || compgen -G "k8s/*.yaml" > /dev/null; then
+            kube-linter lint k8s/
+          else
+            echo "No Kubernetes manifests found in k8s/ directory. Skipping kube-linter."
+          fi
+        continue-on-error: true
